@@ -1,0 +1,49 @@
+name: PHP CI Automated Testing
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  build-and-test:
+    name: Lint, Unit Tests & HTTP Smoke Checks
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 1. Checkout repository code
+        uses: actions/checkout@v4
+
+      - name: 2. Setup PHP 8.3 environment
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: mbstring
+
+      - name: 3. PHP Syntax Check (Linter)
+        run: |
+          find . -name "*.php" -print0 | xargs -0 -n1 php -l
+
+      - name: 4. Run Automated PHP Test Suite
+        run: php tests/run_tests.php
+
+      - name: 5. Start Built-in PHP Server & Run HTTP Endpoint Smoke Tests
+        run: |
+          php -S 127.0.0.1:8080 > /dev/null 2>&1 &
+          SERVER_PID=$!
+          sleep 2
+
+          STATUS_HOME=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8080/index.php)
+          STATUS_CAT=$(curl -s -o /dev/null -w "%{http_code}" "http://127.0.0.1:8080/category.php?category=electronics")
+          STATUS_SEARCH=$(curl -s -o /dev/null -w "%{http_code}" "http://127.0.0.1:8080/search.php?q=keyboard")
+          STATUS_404=$(curl -s -o /dev/null -w "%{http_code}" "http://127.0.0.1:8080/product.php?id=999")
+
+          kill $SERVER_PID
+
+          echo "HTTP /index.php -> $STATUS_HOME"
+          echo "HTTP /category.php -> $STATUS_CAT"
+          echo "HTTP /search.php -> $STATUS_SEARCH"
+          echo "HTTP /product.php?id=999 -> $STATUS_404"
+
+          [ "$STATUS_HOME" = "200" ] && [ "$STATUS_CAT" = "200" ] && [ "$STATUS_SEARCH" = "200" ] && [ "$STATUS_404" = "404" ]
